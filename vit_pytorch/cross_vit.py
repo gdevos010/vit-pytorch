@@ -7,6 +7,9 @@ from einops.layers.torch import Rearrange
 
 # helpers
 
+def pair(t):
+    return t if isinstance(t, tuple) else (t, t)
+
 def exists(val):
     return val is not None
 
@@ -174,15 +177,21 @@ class ImageEmbedder(nn.Module):
         dim,
         image_size,
         patch_size,
-        dropout = 0.
+        dropout = 0.,
+        channels = 3,
     ):
         super().__init__()
-        assert image_size % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
-        num_patches = (image_size // patch_size) ** 2
-        patch_dim = 3 * patch_size ** 2
+
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
 
         self.to_patch_embedding = nn.Sequential(
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_size, p2 = patch_size),
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.Linear(patch_dim, dim),
         )
 
@@ -225,11 +234,12 @@ class CrossViT(nn.Module):
         cross_attn_dim_head = 64,
         depth = 3,
         dropout = 0.1,
-        emb_dropout = 0.1
+        emb_dropout = 0.1,
+        channels = 3,
     ):
         super().__init__()
-        self.sm_image_embedder = ImageEmbedder(dim = sm_dim, image_size = image_size, patch_size = sm_patch_size, dropout = emb_dropout)
-        self.lg_image_embedder = ImageEmbedder(dim = lg_dim, image_size = image_size, patch_size = lg_patch_size, dropout = emb_dropout)
+        self.sm_image_embedder = ImageEmbedder(dim = sm_dim, image_size = image_size, patch_size = sm_patch_size, dropout = emb_dropout, channels = channels)
+        self.lg_image_embedder = ImageEmbedder(dim = lg_dim, image_size = image_size, patch_size = lg_patch_size, dropout = emb_dropout, channels = channels)
 
         self.multi_scale_encoder = MultiScaleEncoder(
             depth = depth,
